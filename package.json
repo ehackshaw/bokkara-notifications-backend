@@ -1,0 +1,17 @@
+
+{
+  "name": "bokkara-notifications-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Secure Shopify membership verification and Firebase push notification backend for Bokkara.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}
