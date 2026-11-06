@@ -3,7 +3,8 @@ import {
   createHmac,
   randomBytes,
   createHash,
-  timingSafeEqual
+  timingSafeEqual,
+  createPublicKey
 } from "node:crypto";
 
 import { shopifyGraphQL } from "../lib/shopify.js";
@@ -36,9 +37,39 @@ function verifyShopifySignature(params) {
 }
 
 function hashValue(value) {
-  return createHash("sha256")
-    .update(value)
-    .digest("hex");
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function validatePublicKey(encodedKey) {
+  if (
+    typeof encodedKey !== "string" ||
+    encodedKey.length < 100 ||
+    encodedKey.length > 3000
+  ) {
+    return null;
+  }
+
+  try {
+    const key = createPublicKey({
+      key: Buffer.from(encodedKey, "base64"),
+      format: "der",
+      type: "spki"
+    });
+
+    if (
+      key.asymmetricKeyType !== "ec" ||
+      key.asymmetricKeyDetails?.namedCurve !== "prime256v1"
+    ) {
+      return null;
+    }
+
+    return key.export({
+      format: "der",
+      type: "spki"
+    }).toString("base64");
+  } catch {
+    return null;
+  }
 }
 
 export default async function handler(req, res) {
@@ -120,19 +151,29 @@ export default async function handler(req, res) {
       ? "member"
       : "membership_invitation";
 
-    // Registration challenge is only issued on an explicit request.
     if (params.get("action") === "registration_challenge") {
+      const publicKey = validatePublicKey(
+        params.get("device_public_key")
+      );
+
+      if (!publicKey) {
+        return res.status(400).json({
+          success: false,
+          error: "A valid device public key is required"
+        });
+      }
+
       const challenge = randomBytes(32).toString("hex");
-      const challengeHash = hashValue(challenge);
+      const now = Date.now();
 
-      const db = getBokkaraFirestore();
-
-      await db.collection("registration_challenges")
-        .doc(challengeHash)
+      await getBokkaraFirestore()
+        .collection("registration_challenges")
+        .doc(hashValue(challenge))
         .set({
           customerId: data.customer.id,
-          createdAt: Date.now(),
-          expiresAt: Date.now() + 60000,
+          publicKey,
+          createdAt: now,
+          expiresAt: now + 60000,
           used: false
         });
 
