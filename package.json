@@ -4,6 +4,11 @@
   "private": true,
   "description": "Bokkara Shopify membership verification and Firebase notification backend",
   "type": "module",
-  "engines": { "node": ">=20" },
-  "dependencies": { "firebase-admin": "^13.0.0" }
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "google-auth-library": "^10.0.0"
+  }
 }
