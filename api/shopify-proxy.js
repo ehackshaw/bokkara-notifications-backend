@@ -1,6 +1,13 @@
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import {
+  createHmac,
+  randomBytes,
+  createHash,
+  timingSafeEqual
+} from "node:crypto";
+
 import { shopifyGraphQL } from "../lib/shopify.js";
+import { getBokkaraFirestore } from "../lib/firebase.js";
 
 function verifyShopifySignature(params) {
   const secret = process.env.SHOPIFY_CLIENT_SECRET;
@@ -26,6 +33,12 @@ function verifyShopifySignature(params) {
     Buffer.from(expected, "hex"),
     Buffer.from(signature, "hex")
   );
+}
+
+function hashValue(value) {
+  return createHash("sha256")
+    .update(value)
+    .digest("hex");
 }
 
 export default async function handler(req, res) {
@@ -103,20 +116,50 @@ export default async function handler(req, res) {
       typeof data.customer.membershipNumber?.value === "string" &&
       data.customer.membershipNumber.value.trim().length > 0;
 
+    const eligibility = hasMembershipNumber
+      ? "member"
+      : "membership_invitation";
+
+    // Registration challenge is only issued on an explicit request.
+    if (params.get("action") === "registration_challenge") {
+      const challenge = randomBytes(32).toString("hex");
+      const challengeHash = hashValue(challenge);
+
+      const db = getBokkaraFirestore();
+
+      await db.collection("registration_challenges")
+        .doc(challengeHash)
+        .set({
+          customerId: data.customer.id,
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 60000,
+          used: false
+        });
+
+      return res.status(200).json({
+        success: true,
+        authenticated: true,
+        notificationEligibility: eligibility,
+        registrationChallenge: challenge,
+        expiresInSeconds: 60
+      });
+    }
+
     return res.status(200).json({
       success: true,
       authenticated: true,
-      notificationEligibility: hasMembershipNumber
-        ? "member"
-        : "membership_invitation"
+      notificationEligibility: eligibility
     });
 
   } catch (error) {
-    console.error("Shopify proxy verification failed:", error.message);
+    console.error(
+      "Shopify proxy request failed:",
+      error.message
+    );
 
     return res.status(502).json({
       success: false,
-      error: "Unable to verify customer notification eligibility"
+      error: "Unable to process Shopify customer verification"
     });
   }
 }
