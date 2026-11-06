@@ -1,4 +1,3 @@
-
 import {
   createHmac,
   randomBytes,
@@ -88,6 +87,14 @@ export default async function handler(req, res) {
     const url = new URL(req.url, "https://localhost");
     const params = url.searchParams;
 
+    // Reject stale signed proxy requests to limit replay of account identity.
+    const timestamp = params.get("timestamp");
+    const timestampSeconds = Number(timestamp);
+    if (!timestamp || !/^\d{10,}$/.test(timestamp) || !Number.isSafeInteger(timestampSeconds) ||
+        Math.abs(Date.now() - timestampSeconds * 1000) > 5 * 60 * 1000) {
+      return res.status(401).json({ success: false, error: "Expired Shopify proxy request" });
+    }
+
     if (!verifyShopifySignature(params)) {
       return res.status(401).json({
         success: false,
@@ -108,6 +115,11 @@ export default async function handler(req, res) {
         success: false,
         error: "Shop not authorized"
       });
+    }
+
+    const action = params.get("action");
+    if (action && action !== "registration_challenge") {
+      return res.status(400).json({ success: false, error: "Unsupported action" });
     }
 
     const customerId = params.get("logged_in_customer_id");
@@ -151,7 +163,7 @@ export default async function handler(req, res) {
       ? "member"
       : "membership_invitation";
 
-    if (params.get("action") === "registration_challenge") {
+    if (action === "registration_challenge") {
       const publicKey = validatePublicKey(
         params.get("device_public_key")
       );
