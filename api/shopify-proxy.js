@@ -184,6 +184,9 @@ export default async function handler(req, res) {
         .set({
           customerId: data.customer.id,
           publicKey,
+          // Snapshot of Shopify membership eligibility for the authenticated
+          // registration attempt. This is not a push trigger by itself.
+          notificationEligibility: eligibility,
           createdAt: now,
           expiresAt: now + 60000,
           used: false
