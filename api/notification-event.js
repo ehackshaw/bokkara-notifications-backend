@@ -38,7 +38,7 @@ export default async function handler(req,res) {
     });
     if (!claimed) return res.status(200).json({success:true,duplicate:true});
     const snapshot = await db.collection('notification_devices').where('customerId','==',event.customerId).where('active','==',true).limit(500).get();
-    const docs = snapshot.docs.filter(d => d.data().integrityVerified === true && typeof d.data().fcmToken === 'string');
+    const docs = snapshot.docs.filter(d => d.data().integrityVerified === true && typeof d.data().fcmToken === 'string' && (!bookingTypes.has(event.type) || d.data().notificationEligibility === 'member'));
     if (!docs.length) {
       await eventRef.update({status:'no_devices',finishedAt:Date.now(),delivered:0});
       return res.status(200).json({success:true,delivered:0});
