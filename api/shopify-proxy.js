@@ -195,6 +195,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         success: true,
         authenticated: true,
+        customerId: data.customer.id,
         notificationEligibility: eligibility,
         registrationChallenge: challenge,
         expiresInSeconds: 60
@@ -204,6 +205,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       authenticated: true,
+      customerId: data.customer.id,
       notificationEligibility: eligibility
     });
 
