@@ -6,6 +6,8 @@ const hash = x => createHash('sha256').update(x).digest('hex');
 const compare = (a,b) => typeof a === 'string' && typeof b === 'string' && a.length === b.length && timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const isGid = x => typeof x === 'string' && /^gid:\/\/shopify\/Customer\/[1-9]\d*$/.test(x);
 const validEventId = x => typeof x === 'string' && x.length <= 160 && /^[A-Za-z0-9_.:-]+$/.test(x);
+const bookingTypes = new Set(['booking_received','booking_confirmed','booking_adjusted']);
+const validOrderNumber = x => typeof x === 'string' && /^[A-Za-z0-9-]{1,40}$/.test(x);
 const invalidTokenCodes = new Set(['messaging/registration-token-not-registered','messaging/invalid-registration-token']);
 
 export default async function handler(req,res) {
@@ -17,11 +19,11 @@ export default async function handler(req,res) {
   if (typeof secret !== 'string' || secret.length < 32) return res.status(503).json({success:false,error:'Notification events not configured'});
   const raw = req.body;
   const event = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
-  if (!event || !validEventId(event.eventId) || !isGid(event.customerId) || !Object.hasOwn(EVENTS,event.type) || Object.keys(event).some(k => !['eventId','customerId','type'].includes(k))) {
+  if (!event || !validEventId(event.eventId) || !isGid(event.customerId) || !Object.hasOwn(EVENTS,event.type) || Object.keys(event).some(k => !['eventId','customerId','type','orderNumber'].includes(k)) || (bookingTypes.has(event.type) ? !validOrderNumber(event.orderNumber) : event.orderNumber !== undefined)) {
     return res.status(400).json({success:false,error:'Invalid event'});
   }
   // Canonical signature over exactly the validated event fields. Callers must construct the same string.
-  const canonical = JSON.stringify({eventId:event.eventId,customerId:event.customerId,type:event.type});
+  const canonical = JSON.stringify({eventId:event.eventId,customerId:event.customerId,type:event.type,...(bookingTypes.has(event.type) ? {orderNumber:event.orderNumber} : {})});
   const expected = createHmac('sha256',secret).update(canonical).digest('hex');
   if (!compare(req.headers['x-bokkara-signature'],expected)) return res.status(401).json({success:false,error:'Unauthorized'});
   const db = getBokkaraFirestore();
@@ -45,7 +47,7 @@ export default async function handler(req,res) {
     const result = await getBokkaraMessaging().sendEachForMulticast({
       tokens:docs.map(d => d.data().fcmToken),
       notification:{title:template.title,body:template.body},
-      data:{type:event.type,eventId:event.eventId,path:template.path},
+      data:{type:event.type,eventId:event.eventId,path:bookingTypes.has(event.type) ? `/pages/find-your-booking?order_number=${encodeURIComponent(event.orderNumber)}` : template.path},
       android:{priority:'high',notification:{channelId:'bokkara_updates'}}
     });
     await Promise.all(result.responses.map(async (r,i) => {
