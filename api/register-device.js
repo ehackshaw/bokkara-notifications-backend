@@ -96,12 +96,13 @@ export default async function handler(req, res) {
         return { status: 401, error: 'Challenge expired or already used' };
       }
       const previous = deviceSnapshot.exists ? deviceSnapshot.data() : null;
-      if (previous && previous.customerId !== record.customerId) return { status: 409, error: 'Device token already associated with another account' };
+      if (previous && previous.publicKeyHash !== sha256(record.publicKey)) return { status: 409, error: 'Device token belongs to a different verified installation' };
       transaction.update(challengeRef, { used: true, usedAt: now });
       transaction.set(deviceRef, {
         customerId: record.customerId, fcmToken, tokenHash: sha256(fcmToken),
         publicKeyHash: sha256(record.publicKey), platform: 'android', active: true,
-        createdAt: previous?.createdAt || now, updatedAt: now, integrityVerified, testOnly: testMode
+        createdAt: previous?.createdAt || now, updatedAt: now, integrityVerified, testOnly: testMode,
+         notificationEligibility: record.notificationEligibility
       });
       return { status: 200 };
     });
